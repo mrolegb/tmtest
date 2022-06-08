@@ -1,7 +1,6 @@
 import re
+import os
 from argparse import ArgumentParser
-
-info_line = r'([A-Z]+):\s+(.*)\s+\(([0-9]+.[0-9]+)'
 
 
 def get_title(line: str) -> str:
@@ -18,9 +17,14 @@ def get_time(line: str) -> float:
 
 
 def get_summary(file):
-    summary = {'PASS': 0, 'FAIL': 0, 'SKIP': 0, 'time': 0.0}
+    summary = {
+        'PASS': 0,
+        'FAIL': 0,
+        'SKIP': 0,
+        'time': 0.0,
+    }
 
-    for i, line in enumerate(file):
+    for _, line in enumerate(file):
         if 'title' not in summary:
             summary['title'] = get_title(line)
 
@@ -44,6 +48,50 @@ def get_summary(file):
     )
 
 
+def get_failed(file):
+    failed = []
+
+    for _, line in enumerate(file):
+        res = get_result_line(line)
+        if res and 'FAIL' in res.group(1):
+            failed.append(res.group(2).strip())
+
+    if failed:
+        print('= Failed scenarios:')
+        for f in failed:
+            print('\t' + f)
+
+
+def get_skipped(file):
+    skipped = {}
+
+    for i, line in enumerate(file):
+        res = get_result_line(line)
+        if res and 'SKIP' in res.group(1):
+            skipped[res.group(2).strip()] = file[i+1].strip()
+
+    if skipped:
+        print('= Skipped scenarios:')
+        for k, v in skipped.items():
+            print('\t' + k + ':\n\t - ' + v)
+
+
+def process_files(files, full: bool, failed: bool, skipped: bool):
+    for i, f in enumerate(files):
+        print(f)
+        if full:
+            print(open(f, "r").read())
+
+        else:
+            open_file = open(f, "r").readlines()
+            get_summary(open_file)
+            if failed:
+                get_failed(open_file)
+            if skipped:
+                get_skipped(open_file)
+            print('= For more details go to {}\n'.format(files[i]))
+
+
 def main():
     parser = ArgumentParser()
     parser.add_argument(
@@ -51,25 +99,51 @@ def main():
         "--file",
         dest="filename",
         help="Report path and filename",
-        required=True
+    )
+    parser.add_argument(
+        "-d",
+        "--dir",
+        dest="directory",
+        help="Report directory",
+    )
+    parser.add_argument(
+        "--failed",
+        dest="failed",
+        help="Print failed scenarios",
+        action="store_true",
+        default=False,
+    )
+    parser.add_argument(
+        "--skipped",
+        dest="skipped",
+        help="Print skipped scenarios",
+        action="store_true",
+        default=False,
     )
     parser.add_argument(
         "--full",
         dest="full",
         help="Print the report file",
         action="store_true",
-        default=False
+        default=False,
     )
     args = parser.parse_args()
 
-    f = open(args.filename, "r")
+    files = []
 
-    if args.full:
-        print(f.read())
-        return
+    if args.filename:
+        if os.path.isabs(args.filename):
+            files.append(args.filename)
+        else:
+            files.append(os.path.abspath(os.getcwd()) + '/' + args.filename)
 
-    get_summary(f)
-    print('= For more details go to {}'.format(args.filename))
+    if args.directory:
+        for f in os.listdir(os.path.abspath(os.getcwd()) + args.directory):
+            files.append(
+                os.path.abspath(os.getcwd()) + args.directory + '/' + f
+            )
+
+    process_files(files, args.full, args.failed, args.skipped)
 
 
 if __name__ == "__main__":
